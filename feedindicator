@@ -38,7 +38,7 @@ import os
 import pynotify
 import string
 import sys
-import urllib
+import urllib2
 import webbrowser
 import gconf
 import time
@@ -130,12 +130,17 @@ shownotificationsupdate = True
 # default sound for new posts
 sound = "/usr/bin/mplayer -ao alsa /usr/share/sounds/ubuntu/stereo/message.ogg"
 
+# proxy server and port to connect to. Blank to disable
+proxyserver = ""
+
+# proxy handler to use
+proxy = urllib2.ProxyHandler({})
+
 # default position of the feeds top or button of the menu
 feedstop = True
 
 # language properties
 language_properties = None
-
 
 
 ##################################################
@@ -409,7 +414,7 @@ class FeedThread(Thread):
 		feedinfo['postdata'] = []
 		feedinfo['success'] = False
 		try:
-			rssfeed = feedparser.parse(url)
+			rssfeed = feedparser.parse(url, handlers = [proxy])
 			postdata = []
 			for val in rssfeed.entries:
 				val.title = string.replace(val.title, '\n', '')
@@ -445,7 +450,12 @@ class FeedThread(Thread):
 					ext[1] = 'jpg'
 				md5hash = hashlib.md5(str(url)).hexdigest()
 				localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
-				urllib.urlretrieve(webimg, localimg)
+				
+				remoteFile = urllib2.urlopen(webimg)
+				output = open(localimg,'wb')
+				output.write(remoteFile.read())
+				output.close()
+				
 				feedimg = md5hash + '.' + ext[1]
 			feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
 			feedinfo['success'] = True
@@ -750,6 +760,23 @@ class ConfigureDialog:
 		self._textbox.set_text(sound)
 		self._textbox.show()
 
+		hbox6l = gtk.HBox(False, 0)
+		vbox.pack_start(hbox6l, False, True, 0)
+		hbox6l.show()
+
+		entrylabel2 = gtk.Label("Optionally enter a HTTP proxy server and port, eg. http://my.proxy.com:8080. Leave blank to disable.")
+		hbox6l.pack_start(entrylabel2, False, False, 0)
+		entrylabel2.show()
+
+		hbox6 = gtk.HBox(True, 0)
+		vbox.pack_start(hbox6, False, True, 0)
+		hbox6.show()
+
+		self._textbox2 = gtk.Entry()
+		hbox6.pack_start(self._textbox2, True, True, 0)
+		self._textbox2.set_text(proxyserver)
+		self._textbox2.show()
+
 		hbox4 = gtk.HBox(True, 0)
 		vbox.pack_start(hbox4, False, True, 0)
 		hbox4.show()
@@ -938,23 +965,27 @@ class ConfigureDialog:
 		global shownotificationsupdate
 		global usesubmenus
 		global sound
+		global proxy
+		global proxyserver
 		global feedstop
 		global language_properties
 
 		refreshtime = self.refreshtimeset
-		gconf['refreshtime'] = self.refreshtimeset
+		gconf['refreshtime'] = refreshtime
 		itemsperfeed = self.itemsperfeedset
-		gconf['itemsperfeed'] = self.itemsperfeedset
+		gconf['itemsperfeed'] = itemsperfeed
 		shownotifications = self.shownotificationsset
-		gconf['shownotifications'] = self.shownotificationsset
+		gconf['shownotifications'] = shownotifications
 		shownotificationsupdate = self.shownotificationsupdateset
-		gconf['shownotificationsupdate'] = self.shownotificationsupdateset
+		gconf['shownotificationsupdate'] = shownotificationsupdate
 		usesubmenus = self.usesubmenusset
-		gconf['usesubmenus'] = self.usesubmenusset
+		gconf['usesubmenus'] = usesubmenus
 		feedstop = self.feedstopset
-		gconf['feedstop'] = self.feedstopset
+		gconf['feedstop'] = feedstop
 		sound = self._textbox.get_text()
-		gconf['sound'] = self._textbox.get_text()
+		gconf['sound'] = sound
+		proxyserver = self._textbox2.get_text()
+		gconf['proxyserver'] = proxyserver
 		autostart = self.autostartset
 		if autostart == True:
 			self.autostart_create()
@@ -964,6 +995,16 @@ class ConfigureDialog:
 		if not self.langaugeset == '':
 			shutil.copyfile(os.path.join(app_language_dir, self.langaugeset), app_language_file)
 			language_properties = ConfigObj(app_language_file)
+				
+		if len(proxyserver) > 0:
+			opener = urllib2.build_opener(proxy)
+			urllib2.install_opener(opener)
+			proxy = urllib2.ProxyHandler({
+				'http': proxyserver,
+				'https': proxyserver
+			})
+		else:
+			proxy = urllib2.ProxyHandler({})
 
 		sq = SQLite()
 		sq.open(app_database)
@@ -1000,6 +1041,8 @@ class AppIndicator:
 		global shownotificationsupdate
 		global usesubmenus
 		global sound
+		global proxyserver
+		global proxy
 		global feedstop
 
 		if gconf['refreshtime'] is not None:
@@ -1041,6 +1084,21 @@ class AppIndicator:
 			sound = gconf['sound'];
 		else:
 			gconf['sound'] = sound;
+
+		if gconf['proxyserver'] is not None:
+			proxyserver = gconf['proxyserver'];
+		else:
+			gconf['proxyserver'] = proxyserver;
+		
+		if len(proxyserver) > 0:
+			opener = urllib2.build_opener(proxy)
+			urllib2.install_opener(opener)
+			proxy = urllib2.ProxyHandler({
+				'http': proxyserver,
+				'https': proxyserver
+			})
+		else:
+			proxy = urllib2.ProxyHandler({})
 
 		if os.path.exists(app_autostart_file):
 			autostart = True
