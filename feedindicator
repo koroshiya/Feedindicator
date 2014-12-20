@@ -136,6 +136,9 @@ proxyserver = ""
 # proxy handler to use
 proxy = urllib2.ProxyHandler({})
 
+# web browser to use. Blank to use system default
+browser = ""
+
 # default position of the feeds top or button of the menu
 feedstop = True
 
@@ -580,7 +583,7 @@ class ConfigureDialog:
 		self.langaugeset = ''
 
 		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-		self.window.set_size_request(850, 550)
+		self.window.set_size_request(850, 650)
 		self.window.set_position(gtk.WIN_POS_CENTER)
 		self.window.set_title(language_properties['configure'] + ' ' + app_name)
 		self.window.connect('delete_event',self.cancel_dialog)
@@ -777,6 +780,23 @@ class ConfigureDialog:
 		self._textbox2.set_text(proxyserver)
 		self._textbox2.show()
 
+		hbox7l = gtk.HBox(False, 0)
+		vbox.pack_start(hbox7l, False, True, 0)
+		hbox7l.show()
+
+		entrylabel3 = gtk.Label("Optionally enter a specific browser to use when opening links, eg. firefox. Leave blank to use system default.")
+		hbox7l.pack_start(entrylabel3, False, False, 0)
+		entrylabel3.show()
+
+		hbox7 = gtk.HBox(True, 0)
+		vbox.pack_start(hbox7, False, True, 0)
+		hbox7.show()
+
+		self._textbox3 = gtk.Entry()
+		hbox7.pack_start(self._textbox3, True, True, 0)
+		self._textbox3.set_text(browser)
+		self._textbox3.show()
+
 		hbox4 = gtk.HBox(True, 0)
 		vbox.pack_start(hbox4, False, True, 0)
 		hbox4.show()
@@ -967,6 +987,7 @@ class ConfigureDialog:
 		global sound
 		global proxy
 		global proxyserver
+		global browser
 		global feedstop
 		global language_properties
 
@@ -986,6 +1007,8 @@ class ConfigureDialog:
 		gconf['sound'] = sound
 		proxyserver = self._textbox2.get_text()
 		gconf['proxyserver'] = proxyserver
+		browser = self._textbox3.get_text()
+		gconf['browser'] = browser
 		autostart = self.autostartset
 		if autostart == True:
 			self.autostart_create()
@@ -1044,6 +1067,7 @@ class AppIndicator:
 		global proxyserver
 		global proxy
 		global feedstop
+		global browser
 
 		if gconf['refreshtime'] is not None:
 			refreshtime = gconf['refreshtime'];
@@ -1089,6 +1113,11 @@ class AppIndicator:
 			proxyserver = gconf['proxyserver'];
 		else:
 			gconf['proxyserver'] = proxyserver;
+
+		if gconf['browser'] is not None:
+			browser = gconf['browser'];
+		else:
+			gconf['browser'] = browser;
 		
 		if len(proxyserver) > 0:
 			opener = urllib2.build_opener(proxy)
@@ -1162,14 +1191,21 @@ class AppIndicator:
 		n = pynotify.Notification((title if not title == '' else ''), message, image)
 		n.set_hint_string('x-canonical-append','')
 		n.show()
+	
+	def open_in_browser(self, url):
+		if len(browser) > 0:
+			b = webbrowser.get(browser)
+			b.open(url)
+		else:
+			webbrowser.open(url)
 
 	def menuitem_response_website(self, data, url):
 		"""open the feed's website url"""
-		webbrowser.open(url)
+		self.open_in_browser(url)
 
 	def menuitem_response(self, data, post_id, url):
 		"""open the website page url"""
-		webbrowser.open(url)
+		self.open_in_browser(url)
 
 		sq = SQLite()
 		sq.open(app_database)
@@ -1350,7 +1386,7 @@ class AppIndicator:
 		if not url == '':
 			posts = sq.execute('select post_url from posts where feed_url=? and read=\'false\'', (url,))
 			for post in posts:
-				webbrowser.open(post[0])
+				self.open_in_browser(post[0])
 				sleep(0.6)
 
 			sq.execute('update posts set read=\'true\' where feed_url=?', (url,))
@@ -1360,7 +1396,7 @@ class AppIndicator:
 			for feed in feeds:
 				posts = sq.execute('select post_url from posts where feed_url=? and read=\'false\'', feed)
 				for post in posts:
-					webbrowser.open(post[0])
+					self.open_in_browser(post[0])
 					sleep(0.6)
 
 				sq.execute('update posts set read=\'true\' where feed_url=?', feed)
