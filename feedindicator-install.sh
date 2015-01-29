@@ -25,6 +25,7 @@ sudo cp feedindicator /usr/bin/feedindicator
 sudo chmod +x /usr/bin/feedindicator
 
 mkdir -p ~/.config/feedindicator
+mkdir -p ~/.cache/feedindicator
 cp languages/english.properties ~/.config/feedindicator/language.properties
 
 MESSAGE="Feedindicator install completed."

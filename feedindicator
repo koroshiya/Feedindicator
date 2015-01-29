@@ -35,6 +35,7 @@ import feedparser
 import gc
 import hashlib
 import os
+import re
 import pynotify
 import string
 import sys
@@ -133,6 +134,9 @@ shownotifications = True
 
 # default show notification popups at begining and end of update
 shownotificationsupdate = True
+
+# default show descriptions of feed entries when retrieving said entries
+showdescriptions = True
 
 # default sound for new posts
 sound = "/usr/bin/mplayer -ao alsa /usr/share/sounds/ubuntu/stereo/message.ogg"
@@ -458,8 +462,15 @@ class FeedThread(Thread):
 			postdata = []
 			for val in rssfeed.entries:
 				val.title = string.replace(val.title, '\n', '')
-				if len(val.title) > 72:
-					substr = val.title[:72]
+
+				if showdescriptions:
+					descr = re.sub('<[^<]+?>', '', val.description)
+					descr = string.replace(descr, '\n', '')
+					descr = string.replace(descr, val.title, ' ')
+					descr = re.sub(' +', ' ', descr)
+					val.title = val.title + ': ' + descr
+				if len(val.title) > 120:
+					substr = val.title[:120]
 					substr = substr.rpartition(' ')
 					if substr[0] != '':
 						val.title = substr[0] + '...'
@@ -484,23 +495,33 @@ class FeedThread(Thread):
 			elif 'icon' in rssfeed.feed:
 				webimg = rssfeed.feed.icon
 			if webimg != None:
-				ext = webimg.rsplit('.', 1)
-				if len(ext[1]) > 5 or len(ext[1]) == 0:
-					ext[0] = webimg
-					ext[1] = 'jpg'
-				md5hash = hashlib.md5(str(url)).hexdigest()
-				localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
-				
-				remoteFile = urllib2.urlopen(webimg)
-				output = open(localimg,'wb')
-				output.write(remoteFile.read())
-				output.close()
-				
-				feedimg = md5hash + '.' + ext[1]
+				try:
+					ext = webimg.rsplit('.', 1)
+					if len(ext[1]) > 5 or len(ext[1]) == 0:
+						ext[0] = webimg
+						ext[1] = 'jpg'
+					md5hash = hashlib.md5(str(url)).hexdigest()
+					localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
+					print localimg
+					
+					remoteFile = urllib2.urlopen(webimg)
+					output = open(localimg,'wb')
+					output.write(remoteFile.read())
+					output.close()
+					
+					feedimg = md5hash + '.' + ext[1]
+				except IOError:
+					print "Error retrieving RSS feed icon - Does the directory ~/.cache/feedindicator exist?"
 			feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
 			feedinfo['success'] = True
+		except IOError as e:
+			print 'Error on line {}'.format(sys.exc_info()[-1].tb_lineno)
+			print "I/O error({0}): {1}".format(e.errno, e.strerror)
+		except NameError as ne:
+			print 'Error on line {}'.format(sys.exc_info()[-1].tb_lineno)
+			print ne
 		except:
-			pass
+			print "Error: ", sys.exc_info()[0]
 
 		return feedinfo
 
@@ -615,6 +636,7 @@ class ConfigureDialog:
 		self.autostartset = autostart
 		self.shownotificationsset = shownotifications
 		self.shownotificationsupdateset = shownotificationsupdate
+		self.showdescriptionsset = showdescriptions
 		self.usesubmenusset = usesubmenus
 		self.feedstopset = feedstop
 		self.langaugeset = ''
@@ -782,6 +804,13 @@ class ConfigureDialog:
 			self.check_shownotificationsupdate.set_active(True)
 		self.check_shownotificationsupdate.connect('toggled', self.shownotificationsupdate_toggle)
 		self.check_shownotificationsupdate.show()
+
+		self.check_showdescriptions = gtk.CheckButton('Show feed descriptions')
+		hbox2tb.pack_start(self.check_showdescriptions, True, True, 0)
+		if showdescriptions == True:
+			self.check_showdescriptions.set_active(True)
+		self.check_showdescriptions.connect('toggled', self.showdescriptions_toggle)
+		self.check_showdescriptions.show()
 
 		hbox3l = gtk.HBox(False, 0)
 		vbox.pack_start(hbox3l, False, True, 0)
@@ -965,6 +994,13 @@ class ConfigureDialog:
 		else:
 			self.shownotificationsupdateset = False
 
+	def showdescriptions_toggle(self, widget):
+		"""check toggle status"""
+		if widget.get_active():
+			self.showdescriptionsset = True
+		else:
+			self.showdescriptionsset = False
+
 	def usesubmenus_toggle(self, widget):
 		"""check toggle status"""
 		if widget.get_active():
@@ -1020,6 +1056,7 @@ class ConfigureDialog:
 		global autostart
 		global shownotifications
 		global shownotificationsupdate
+		global showdescriptions
 		global usesubmenus
 		global sound
 		global proxy
@@ -1036,6 +1073,8 @@ class ConfigureDialog:
 		gconf['shownotifications'] = shownotifications
 		shownotificationsupdate = self.shownotificationsupdateset
 		gconf['shownotificationsupdate'] = shownotificationsupdate
+		showdescriptions = self.showdescriptionsset
+		gconf['showdescriptions'] = showdescriptions
 		usesubmenus = self.usesubmenusset
 		gconf['usesubmenus'] = usesubmenus
 		feedstop = self.feedstopset
@@ -1099,6 +1138,7 @@ class AppIndicator:
 		global autostart
 		global shownotifications
 		global shownotificationsupdate
+		global showdescriptions
 		global usesubmenus
 		global sound
 		global proxyserver
@@ -1130,6 +1170,11 @@ class AppIndicator:
 			shownotificationsupdate = gconf['shownotificationsupdate'];
 		else:
 			gconf['shownotificationsupdate'] = shownotificationsupdate;
+
+		if gconf['showdescriptions'] is not None:
+			showdescriptions = gconf['showdescriptions'];
+		else:
+			gconf['showdescriptions'] = showdescriptions;
 
 		if gconf['usesubmenus'] is not None:
 			usesubmenus = gconf['usesubmenus'];
