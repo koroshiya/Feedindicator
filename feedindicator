@@ -51,6 +51,13 @@ from gconf import VALUE_BOOL, VALUE_INT, VALUE_STRING, VALUE_FLOAT
 from types import BooleanType, StringType, IntType, FloatType
 from configobj import ConfigObj
 
+import multiprocessing
+from multiprocessing import Queue, current_process
+if os.name == 'nt':
+	from threading import Thread
+else:
+	from multiprocessing import Process
+
 # clear out the html element list so all are removed
 feedparser._HTMLSanitizer.acceptable_elements = []
 
@@ -365,6 +372,18 @@ class GConf:
 ###############     FeedThread     ###############
 ##################################################
 class FeedThread(Thread):
+
+	work_queue = Queue()
+	done_queue = Queue()
+	processes = []
+	workers = 4
+	
+	def worker(self, work_queue, done_queue):
+		for feed in iter(work_queue.get, 'STOP'):
+			feedinfo = self.parse_feed(feed[0])
+			done_queue.put([feedinfo, feed])
+		return True
+
 	def run(self):
 		"""updates all feeds in the database und updates the infos"""
 		sq = SQLite()
@@ -373,7 +392,25 @@ class FeedThread(Thread):
 		feeds = sq.execute('select feed_url, title, url, img from feeds')
 		if len(feeds) > 0:
 			for feed in feeds:
-				feedinfo = self.parse_feed(feed[0])
+				self.work_queue.put(feed)
+
+			for w in xrange(self.workers):
+				if os.name == 'nt':
+					p = Thread(target=self.worker, args=(self.work_queue, self.done_queue))
+				else:
+					p = Process(target=self.worker, args=(self.work_queue, self.done_queue))
+				p.start()
+				self.processes.append(p)
+				self.work_queue.put('STOP')
+
+			for p in self.processes:
+				p.join()
+
+			self.done_queue.put('STOP')
+
+			for status in iter(self.done_queue.get, 'STOP'):
+				feedinfo = status[0]
+				feed = status[1]
 
 				if feedinfo['success']:
 					if feed[1] == None:
