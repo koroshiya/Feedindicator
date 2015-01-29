@@ -24,6 +24,9 @@ sudo cp -r languages/ /usr/share/feedindicator/
 sudo cp feedindicator /usr/bin/feedindicator
 sudo chmod +x /usr/bin/feedindicator
 
+mkdir -p ~/.config/feedindicator
+cp languages/english.properties ~/.config/feedindicator/language.properties
+
 MESSAGE="Feedindicator install completed."
 echo $MESSAGE
 
